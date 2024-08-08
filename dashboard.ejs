@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="left">
+            <div class="welcome-container">
+                <h1>Welcome, <%= user.firstName %> <%= user.lastName %></h1>
+                <form method="get" action="/dashboard">
+                    <label for="title">Search by Title:</label>
+                    <input type="text" id="title" name="title" value="<%= title %>">
+                    <input type="submit" value="Search">
+                </form>
+            </div>
+            <h2>Please select the books you want</h2>
+            <div class="table-wrapper">
+                <div class="table-container">
+                    <% if (rows.length > 0) { %>
+                        <form method="post" action="/dashboard">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Book Title</th>
+                                        <th>Author</th>
+                                        <th>Description</th>
+                                        <th>Select</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% rows.forEach(row => { %>
+                                        <tr>
+                                            <td><%= row.title %></td>
+                                            <td><%= row.author %></td>
+                                            <td><%= row.description %></td>
+                                            <td><input type="checkbox" name="selected_books" value="<%= row.id %>"></td>
+                                        </tr>
+                                    <% }) %>
+                                </tbody>
+                            </table>
+                            <div class="buttons-container">
+                                <input type="submit" value="Order">
+                                <button type="button" onclick="window.location.href='/'">Cancel</button>
+                            </div>
+                        </form>
+                    <% } else { %>
+                        <p>No books found.</p>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+        <div class="right">
+            <!-- Any additional content for the right side can go here -->
+        </div>
+    </div>
+</body>
+</html>
