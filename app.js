@@ -41,18 +41,31 @@ app.post('/signin', async (req, res) => {
     const { username, password } = req.body;
 
     try {
-        const result = await pool.query('SELECT * FROM "Users" WHERE username = $1 AND password = $2', [username, password]);
-
+        // Query the Users table for the provided username
+        const result = await pool.query('SELECT * FROM "Users" WHERE username = $1', [username]);
+        
         if (result.rows.length > 0) {
-            req.session.user = result.rows[0];
-            res.redirect('/');
+            const user = result.rows[0];
+            
+            // Check if the password matches (this assumes the password is stored in plain text; in reality, you should hash it)
+            if (password === user.password) {
+                // Store user info in session
+                req.session.user = user;
+                
+                // Redirect to the dashboard page after successful sign-in
+                return res.redirect('/dashboard');
+            } else {
+                req.flash('error', 'Invalid username or password.');
+                return res.redirect('/signin');
+            }
         } else {
             req.flash('error', 'Invalid username or password.');
-            res.redirect('/signin');
+            return res.redirect('/signin');
         }
-    } catch (error) {
-        console.error('Error querying database:', error);
-        res.status(500).send('Server error');
+    } catch (err) {
+        console.error('Error querying database:', err);
+        req.flash('error', 'An error occurred. Please try again.');
+        return res.redirect('/signin');
     }
 });
 
@@ -79,6 +92,34 @@ app.get('/', async (req, res) => {
         res.status(500).send('Server error');
     }
 });
+
+// Add the /dashboard route here
+app.get('/dashboard', (req, res) => {
+    // Check if the user is logged in
+    if (!req.session.user) {
+        req.flash('error', 'Please sign in to access the dashboard.');
+        return res.redirect('/signin');
+    }
+
+    const { title } = req.query || ''; // Get title from query string, or default to an empty string
+ 
+    // Fetch necessary data for the dashboard, such as books
+    pool.query('SELECT * FROM "Books"', (err, result) => {
+        if (err) {
+            console.error('Error querying the database:', err);
+            req.flash('error', 'An error occurred. Please try again.');
+            return res.redirect('/signin');
+        }
+
+        // Render the dashboard page with the fetched data
+        res.render('dashboard', {
+            user: req.session.user,
+            rows: result.rows,
+            title: title // Pass title to view
+        });
+	});
+});
+
 
 // Start the server
 app.listen(port, () => {
