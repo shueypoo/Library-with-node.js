@@ -147,24 +147,30 @@ app.post('/dashboard/select', async (req, res) => {
         return res.redirect('/dashboard');
     }
 
-	try {
-        // Insert into BorrowingActivity table
-        const activityResult = await pool.query(
-            'INSERT INTO "BorrowingActivity" ("userId", "borrowDate") VALUES ($1, NOW()) RETURNING "activityId"',
-            [req.session.user.id]
-        );
-
-        const activityId = activityResult.rows[0].activityId; // Get the new activityId
-
-        // Insert into BorrowingDetails table
+    try {
+        // Insert into BorrowingActivity and handle multiple books
         for (let bookId of selectedBooks) {
+            // Insert into BorrowingActivity and return the activityId and borrowDate
+            const { rows } = await pool.query(
+                'INSERT INTO "BorrowingActivity" ("userId", "borrowDate") VALUES ($1, NOW()) RETURNING "activityId", "borrowDate"',
+                [req.session.user.id]
+            );
+
+            const activityId = rows[0].activityId; // Ensure activityId is defined
+            const borrowDate = rows[0].borrowDate;
+
+            // Calculate dueDate (2 weeks from borrowDate)
+            const dueDate = new Date(borrowDate);
+            dueDate.setDate(dueDate.getDate() + 14); // Add 14 days to borrowDate
+
+            // Insert into BorrowingDetails with dueDate
             await pool.query(
-                'INSERT INTO "BorrowingDetails" ("activityId", "bookId") VALUES ($1, $2)',
-                [activityId, bookId]
+                'INSERT INTO "BorrowingDetails" ("activityId", "bookId", "dueDate") VALUES ($1, $2, $3)',
+                [activityId, bookId, dueDate] // Include dueDate
             );
         }
 		
-        req.flash('success', 'Books ordered successfully.');
+        req.flash('success', 'Book(s) ordered successfully.');
         res.redirect('/dashboard');
     } catch (err) {
         console.error('Error processing order:', err);
@@ -174,7 +180,7 @@ app.post('/dashboard/select', async (req, res) => {
 });
 
 // Automated task: Send reminder emails 2 days before a book is due
-cron.schedule('0 0 * * *', async () => {
+cron.schedule('* * * * *', async () => {
     console.log('Running daily task to check for due books.');
 
     try {
@@ -182,34 +188,56 @@ cron.schedule('0 0 * * *', async () => {
         dueDateThreshold.setDate(dueDateThreshold.getDate() + 2); // 2 days before due date
 
         const query = `
-            SELECT u.username, u.email, b.title, ba.dueDate
-            FROM "BorrowingActivity" ba
-            JOIN "Users" u ON ba.userId = u.id
-            JOIN "Books" b ON ba.bookId = b.id
-            WHERE ba.dueDate = $1
+            SELECT u.username, u."emailId" AS email, b.title, bd."dueDate"
+            FROM "BorrowingDetails" bd
+            JOIN "BorrowingActivity" ba ON bd."activityId" = ba."activityId"
+            JOIN "Users" u ON ba."userId" = u."id"
+            JOIN "Books" b ON bd."bookId" = b."id"
+            WHERE bd."dueDate" = $1
         `;
 
         const result = await pool.query(query, [dueDateThreshold.toISOString().slice(0, 10)]);
 
         if (result.rows.length > 0) {
+            // Aggregate due books by user
+            const userBooks = result.rows.reduce((acc, row) => {
+                if (!acc[row.email]) {
+                    acc[row.email] = { username: row.username, books: [] };
+                }
+                acc[row.email].books.push({ title: row.title, dueDate: row.dueDate });
+                return acc;
+            }, {});
+
             const transporter = nodemailer.createTransport({
                 service: 'Gmail',
                 auth: {
                     user: process.env.EMAIL_USER,
                     pass: process.env.EMAIL_PASS
+                },
+                tls: {
+                    rejectUnauthorized: false
                 }
             });
 
-            for (const row of result.rows) {
+            for (const [email, userData] of Object.entries(userBooks)) {
+                const bookList = userData.books.map(book => `- "${book.title}" (due on ${book.dueDate})`).join('\n');
                 const mailOptions = {
                     from: process.env.EMAIL_USER,
-                    to: row.email,
-                    subject: 'Book Due Reminder',
-                    text: `Hello ${row.username},\n\nThis is a reminder that the book "${row.title}" is due in 2 days (on ${row.dueDate}). Please return it on time to avoid any late fees.\n\nThank you!`
+                    to: email,
+                    subject: 'Books Due Reminder',
+                    text: `Hello ${userData.username},\n\nThis is a reminder that you have the following books due in 2 days:\n\n${bookList}\n\nPlease return them on time to avoid any late fees.\n\nThank you!`
                 };
 
+                // Send the email
                 await transporter.sendMail(mailOptions);
-                console.log(`Reminder email sent to ${row.email}`);
+
+                // Insert record into sEmailH table
+                await pool.query(
+                    'INSERT INTO "sEmailH" ("dateTime", "email", "subject", "body") VALUES (NOW(), $1, $2, $3)',
+                    [email, mailOptions.subject, mailOptions.text]
+                );
+
+                console.log(`Reminder email sent to ${email}`);
             }
         } else {
             console.log('No due books found.');
@@ -218,6 +246,8 @@ cron.schedule('0 0 * * *', async () => {
         console.error('Error in daily task:', err);
     }
 });
+
+
 
 // Start the server
 app.listen(port, () => {
