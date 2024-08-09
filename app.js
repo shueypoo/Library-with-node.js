@@ -127,6 +127,26 @@ app.get('/dashboard', async (req, res) => {
     }
 });
 
+app.post('/dashboard/select', (req, res) => {
+    // Retrieve the selected books from the form
+    const selectedBooks = req.body.selected_books;
+
+    // If no books are selected, redirect back with a message
+    if (!selectedBooks) {
+        req.flash('error', 'No books were selected.');
+        return res.redirect('/dashboard');
+    }
+
+    // Handle the selected books (e.g., store in the database, create an order, etc.)
+    console.log('Selected Books:', selectedBooks);
+
+    // You might want to do something with the selected books here, like saving an order in the database.
+
+    // Redirect to a confirmation page or back to the dashboard
+    req.flash('success', 'Your books have been ordered successfully.');
+    res.redirect('/dashboard');
+});
+
 
 // Start the server
 app.listen(port, () => {
