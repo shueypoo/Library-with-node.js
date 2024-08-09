@@ -31,44 +31,6 @@ const pool = new Pool({
     port: process.env.DB_PORT
 });
 
-// Route for the sign-in page
-app.get('/signin', (req, res) => {
-    res.render('signin', { messages: req.flash('error') });
-});
-
-// Handle sign-in form submission
-app.post('/signin', async (req, res) => {
-    const { username, password } = req.body;
-
-    try {
-        // Query the Users table for the provided username
-        const result = await pool.query('SELECT * FROM "Users" WHERE username = $1', [username]);
-        
-        if (result.rows.length > 0) {
-            const user = result.rows[0];
-            
-            // Check if the password matches (this assumes the password is stored in plain text; in reality, you should hash it)
-            if (password === user.password) {
-                // Store user info in session
-                req.session.user = user;
-                
-                // Redirect to the dashboard page after successful sign-in
-                return res.redirect('/dashboard');
-            } else {
-                req.flash('error', 'Invalid username or password.');
-                return res.redirect('/signin');
-            }
-        } else {
-            req.flash('error', 'Invalid username or password.');
-            return res.redirect('/signin');
-        }
-    } catch (err) {
-        console.error('Error querying database:', err);
-        req.flash('error', 'An error occurred. Please try again.');
-        return res.redirect('/signin');
-    }
-});
-
 // Route for the home page
 app.get('/', async (req, res) => {
     try {
@@ -93,19 +55,48 @@ app.get('/', async (req, res) => {
     }
 });
 
+// Route for the sign-in page
+app.get('/signin', (req, res) => {
+    res.render('signin', { messages: req.flash('error') });
+});
+
+// Handle sign-in form submission
+app.post('/signin', async (req, res) => {
+    const { username, password } = req.body;
+
+    try {
+        const result = await pool.query('SELECT * FROM "Users" WHERE username = $1', [username]);
+
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+
+            if (password === user.password) {
+                req.session.user = user;
+                return res.redirect('/dashboard');
+            } else {
+                req.flash('error', 'Invalid username or password.');
+                return res.redirect('/signin');
+            }
+        } else {
+            req.flash('error', 'Invalid username or password.');
+            return res.redirect('/signin');
+        }
+    } catch (err) {
+        console.error('Error querying database:', err);
+        req.flash('error', 'An error occurred. Please try again.');
+        return res.redirect('/signin');
+    }
+});
+
 // Add the /dashboard route here
 app.get('/dashboard', async (req, res) => {
-    // Check if the user is logged in
     if (!req.session.user) {
         req.flash('error', 'Please sign in to access the dashboard.');
         return res.redirect('/signin');
     }
-	
-    const { title } = req.query || ''; // Get title from query string, or default to an empty string
- 
-	console.log("Title:", title); // Debugging line
- 
-	try {
+
+    try {
+        const { title } = req.query;
         let query = 'SELECT * FROM "Books"';
         let queryParams = [];
 
@@ -115,38 +106,62 @@ app.get('/dashboard', async (req, res) => {
         }
 
         const result = await pool.query(query, queryParams);
-        res.render('dashboard', {
-            user: req.session.user,
-            rows: result.rows,
-            title: title
-        });
-    } catch (err) {
-        console.error('Error querying the database:', err);
-        req.flash('error', 'An error occurred. Please try again.');
-        return res.redirect('/signin');
+        res.render('dashboard', { user: req.session.user, rows: result.rows, title });
+    } catch (error) {
+        console.error('Error querying database:', error);
+        req.flash('error', 'An error occurred while loading the dashboard.');
+        res.redirect('/signin');
     }
 });
 
-app.post('/dashboard/select', (req, res) => {
-    // Retrieve the selected books from the form
+// New Route to handle book selection and borrowing
+app.post('/dashboard/select', async (req, res) => {
+    if (!req.session.user) {
+        req.flash('error', 'Please sign in to borrow books.');
+        return res.redirect('/signin');
+    }
+
     const selectedBooks = req.body.selected_books;
 
-    // If no books are selected, redirect back with a message
-    if (!selectedBooks) {
-        req.flash('error', 'No books were selected.');
+    if (!selectedBooks || selectedBooks.length === 0) {
+        req.flash('error', 'No books selected.');
         return res.redirect('/dashboard');
     }
 
-    // Handle the selected books (e.g., store in the database, create an order, etc.)
-    console.log('Selected Books:', selectedBooks);
+    try {
+        // Step 1: Insert a new record into the BorrowingActivity table
+        const borrowDate = new Date();
+        const activityResult = await pool.query(
+            `INSERT INTO "BorrowingActivity" ("userId", "borrowDate") VALUES ($1, $2) RETURNING "activityId"`,
+            [req.session.user.id, borrowDate]
+        );
+        const activityId = activityResult.rows[0].activityId;
 
-    // You might want to do something with the selected books here, like saving an order in the database.
+        // Step 2: Insert records into the BorrowingDetails table for each selected book
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 14); // Set due date to 14 days from today
 
-    // Redirect to a confirmation page or back to the dashboard
-    req.flash('success', 'Your books have been ordered successfully.');
-    res.redirect('/dashboard');
+        for (let bookId of selectedBooks) {
+            await pool.query(
+                `INSERT INTO "BorrowingDetails" ("activityId", "bookId", "dueDate") VALUES ($1, $2, $3)`,
+                [activityId, bookId, dueDate]
+            );
+
+            // Step 3: Update the borrowingTimes for each selected book
+            await pool.query(
+                `UPDATE "Books" SET "borrowingTimes" = "borrowingTimes" + 1 WHERE id = $1`,
+                [bookId]
+            );
+        }
+
+        req.flash('success', 'Books borrowed successfully.');
+        res.redirect('/dashboard');
+    } catch (err) {
+        console.error('Error processing book order:', err);
+        req.flash('error', 'An error occurred while borrowing books. Please try again.');
+        res.redirect('/dashboard');
+    }
 });
-
 
 // Start the server
 app.listen(port, () => {
