@@ -4,25 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
-    <link rel="stylesheet" href="/css/styles.css">
+    <!-- <link rel="stylesheet" href="/css/styles.css"> -->
 </head>
 <body>
     <div class="container">
         <div class="left">
             <div class="welcome-container">
                 <h1>Welcome, <%= user.firstName %> <%= user.lastName %></h1>
-                <form method="get" action="/dashboard">
+                
+				<!-- Search Form -->
+					<form method="get" action="/dashboard">
+						<label for="title">Search for title:</label>
+						<input class="nosubmit" type="search" placeholder="Search..." id="title" name="title" value="<%= title %>">
+						<button type="submit">Search</button>
+					</form>
+
+				
+<!-- 				<form method="get" action="/dashboard">
                     <label for="title">Search by Title:</label>
-                    <input type="text" id="title" name="title" value="<%= title %>">
+					<input type="text" id="title" name="title" value="<%= title || '' %>">
                     <input type="submit" value="Search">
                 </form>
-            </div>
+ -->            </div>
+			
+			<!-- Book List -->
             <h2>Please select the books you want</h2>
             <div class="table-wrapper">
                 <div class="table-container">
                     <% if (rows.length > 0) { %>
-                        <form method="post" action="/dashboard">
-                            <table>
+                        <form method="post" action="/dashboard/select">
+                            <table border="1">
                                 <thead>
                                     <tr>
                                         <th>Book Title</th>
@@ -32,14 +43,14 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <% rows.forEach(row => { %>
+                                    <% rows.forEach(function(row) { %>
                                         <tr>
                                             <td><%= row.title %></td>
                                             <td><%= row.author %></td>
                                             <td><%= row.description %></td>
                                             <td><input type="checkbox" name="selected_books" value="<%= row.id %>"></td>
                                         </tr>
-                                    <% }) %>
+                                    <% }); %>
                                 </tbody>
                             </table>
                             <div class="buttons-container">

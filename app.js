@@ -94,30 +94,37 @@ app.get('/', async (req, res) => {
 });
 
 // Add the /dashboard route here
-app.get('/dashboard', (req, res) => {
+app.get('/dashboard', async (req, res) => {
     // Check if the user is logged in
     if (!req.session.user) {
         req.flash('error', 'Please sign in to access the dashboard.');
         return res.redirect('/signin');
     }
-
+	
     const { title } = req.query || ''; // Get title from query string, or default to an empty string
  
-    // Fetch necessary data for the dashboard, such as books
-    pool.query('SELECT * FROM "Books"', (err, result) => {
-        if (err) {
-            console.error('Error querying the database:', err);
-            req.flash('error', 'An error occurred. Please try again.');
-            return res.redirect('/signin');
+	console.log("Title:", title); // Debugging line
+ 
+	try {
+        let query = 'SELECT * FROM "Books"';
+        let queryParams = [];
+
+        if (title) {
+            queryParams.push(`%${title}%`);
+            query += ` WHERE title ILIKE $${queryParams.length}`;
         }
 
-        // Render the dashboard page with the fetched data
+        const result = await pool.query(query, queryParams);
         res.render('dashboard', {
             user: req.session.user,
             rows: result.rows,
-            title: title // Pass title to view
+            title: title
         });
-	});
+    } catch (err) {
+        console.error('Error querying the database:', err);
+        req.flash('error', 'An error occurred. Please try again.');
+        return res.redirect('/signin');
+    }
 });
 
 
