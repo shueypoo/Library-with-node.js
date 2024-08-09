@@ -31,7 +31,7 @@ const pool = new Pool({
     port: process.env.DB_PORT
 });
 
-// Route for the home page
+// Routes
 app.get('/', async (req, res) => {
     try {
         const { title, sort } = req.query;
@@ -66,10 +66,10 @@ app.post('/signin', async (req, res) => {
 
     try {
         const result = await pool.query('SELECT * FROM "Users" WHERE username = $1', [username]);
-
+        
         if (result.rows.length > 0) {
             const user = result.rows[0];
-
+            
             if (password === user.password) {
                 req.session.user = user;
                 return res.redirect('/dashboard');
@@ -88,7 +88,7 @@ app.post('/signin', async (req, res) => {
     }
 });
 
-// Add the /dashboard route here
+// Route for the dashboard page
 app.get('/dashboard', async (req, res) => {
     if (!req.session.user) {
         req.flash('error', 'Please sign in to access the dashboard.');
@@ -106,15 +106,20 @@ app.get('/dashboard', async (req, res) => {
         }
 
         const result = await pool.query(query, queryParams);
-        res.render('dashboard', { user: req.session.user, rows: result.rows, title });
+        res.render('dashboard', {
+            user: req.session.user,
+            rows: result.rows,
+            title,
+            messages: req.flash()
+        });
     } catch (error) {
         console.error('Error querying database:', error);
-        req.flash('error', 'An error occurred while loading the dashboard.');
-        res.redirect('/signin');
+        req.flash('error', 'An error occurred. Please try again.');
+        return res.redirect('/dashboard');
     }
 });
 
-// New Route to handle book selection and borrowing
+// Handle book selection (ordering)
 app.post('/dashboard/select', async (req, res) => {
     if (!req.session.user) {
         req.flash('error', 'Please sign in to borrow books.');
@@ -154,7 +159,7 @@ app.post('/dashboard/select', async (req, res) => {
             );
         }
 
-        req.flash('success', 'Books borrowed successfully.');
+        req.flash('success', 'You successfully borrowed the book(s). Enjoy!');
         res.redirect('/dashboard');
     } catch (err) {
         console.error('Error processing book order:', err);

@@ -8,6 +8,20 @@
 </head>
 <body>
     <div class="container">
+		
+		        <!-- Flash Messages -->
+        <% if (messages.success) { %>
+            <div class="flash-message success">
+                <%= messages.success %>
+            </div>
+        <% } %>
+        <% if (messages.error) { %>
+            <div class="flash-message error">
+                <%= messages.error %>
+            </div>
+        <% } %>
+	
+	
         <div class="left">
             <div class="welcome-container">
                 <h1>Welcome, <%= user.firstName %> <%= user.lastName %></h1>
